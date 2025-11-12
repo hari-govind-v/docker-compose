@@ -385,6 +385,10 @@ docker compose up --force-recreate
 docker compose up --build
 ```
 
+**Important Notes:**
+- `docker compose up` does **not** build images every time. It first checks the Docker image cache. Images are only built if they are not found in the cache.
+- To force a rebuild, use `docker compose up --build` or run `docker compose build` followed by `docker compose up`.
+
 #### Stop Services
 ```bash
 # Stop services
@@ -393,12 +397,18 @@ docker compose stop
 # Stop and remove containers
 docker compose down
 
-# Stop and remove containers, volumes, and networks
+# Stop and remove containers, networks, and volumes
 docker compose down -v
 
 # Stop and remove images
 docker compose down --rmi all
 ```
+
+**Important Notes:**
+- `docker compose down` only removes **containers**, **networks**, and **anonymous volumes** created by the Compose project —
+but not **named volumes** or **images**.
+- To remove volumes, use the `-v` flag: `docker compose down -v`
+- To remove images, use the `--rmi` flag: `docker compose down --rmi local` (removes images built locally) or `docker compose down --rmi all` (removes all images used by services)
 
 #### View Status
 ```bash
