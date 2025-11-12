@@ -1,4 +1,4 @@
 description: A walkthrough of Docker concepts and commands
-theme: jekyll-theme-charcoal
+theme: jekyll-theme-cayman
 markdown: kramdown
 baseurl: /docker-compose
