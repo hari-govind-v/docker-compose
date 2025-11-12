@@ -55,7 +55,6 @@ You create volumes with `docker volume create` and mount them into containers to
 **Networks** enable containers to communicate with each other and the outside world. Docker provides several network types:
 - **Bridge networks**: Default isolated networks for containers on the same host
 - **Host networks**: Containers share the host's network stack
-- **Overlay networks**: Connect containers across multiple Docker hosts
 
 Containers on the same network can discover each other by name, making it easy to connect services like web applications to databases.
 
