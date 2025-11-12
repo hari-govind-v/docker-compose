@@ -1,16 +1,75 @@
 # Docker Compose Session
 
 ## Table of Contents
-1. [Introduction to Docker Compose](#introduction-to-docker-compose)
-2. [Why Docker Compose?](#why-docker-compose)
-3. [How Docker Compose Works](#how-docker-compose-works)
-4. [Installation and Setup](#installation-and-setup)
+1. [Docker Fundamentals Recap](#docker-fundamentals-recap)
+2. [Introduction to Docker Compose](#introduction-to-docker-compose)
+3. [Why Docker Compose?](#why-docker-compose)
+4. [How Docker Compose Works](#how-docker-compose-works)
 5. [Docker Compose File Structure](#docker-compose-file-structure)
 6. [Essential Commands](#essential-commands)
-7. [Advanced Features](#advanced-features)
-8. [Common Use Cases](#common-use-cases)
-9. [Best Practices](#best-practices)
-10. [Troubleshooting](#troubleshooting)
+7. [Common Use Cases](#common-use-cases)
+8. [Best Practices](#best-practices)
+
+---
+
+## Docker Fundamentals Recap
+
+Before diving into Docker Compose, let's quickly recap the core Docker concepts that form the foundation for understanding multi-container applications.
+
+### What is Docker?
+
+Docker is a platform that enables you to package applications and their dependencies into lightweight, portable units called **containers**. Containers run consistently across different environments, solving the "it works on my machine" problem by bundling everything needed to run an application.
+
+### Docker Images
+
+**Images** are read-only templates used to create containers. Think of them as blueprints or snapshots that define:
+- The operating system and base software
+- Application code and dependencies
+- Configuration files
+- Runtime settings
+
+Images are built from `Dockerfile` instructions and stored in registries like Docker Hub. You pull images (`docker pull`) or build them (`docker build`) before running containers.
+
+### Docker Containers
+
+**Containers** are running instances of images. When you execute `docker run`, Docker creates a container from an image. Each container:
+- Has its own isolated filesystem
+- Runs in its own process space
+- Can communicate with other containers through networks
+- Can persist data using volumes
+
+Containers are ephemeral by default—when stopped and removed, their changes are lost unless data is stored in volumes.
+
+### Docker Volumes
+
+**Volumes** provide persistent storage for containers. Unlike the container's filesystem (which is temporary), volumes:
+- Persist data even after containers are removed
+- Can be shared between multiple containers
+- Can be backed up and restored
+- Are managed by Docker and stored outside container lifecycles
+
+You create volumes with `docker volume create` and mount them into containers to preserve important data like databases, logs, or application files.
+
+### Docker Networks
+
+**Networks** enable containers to communicate with each other and the outside world. Docker provides several network types:
+- **Bridge networks**: Default isolated networks for containers on the same host
+- **Host networks**: Containers share the host's network stack
+- **Overlay networks**: Connect containers across multiple Docker hosts
+
+Containers on the same network can discover each other by name, making it easy to connect services like web applications to databases.
+
+---
+
+### The Challenge: Managing Multiple Containers
+
+When building real-world applications, you often need multiple containers working together:
+- A web server container
+- A database container
+- A cache container (Redis)
+- A background worker container
+
+Managing these individually with `docker run` commands becomes complex—you need to create networks, volumes, set environment variables, handle dependencies, and coordinate startup order. This is where **Docker Compose** comes in.
 
 ---
 
@@ -86,37 +145,6 @@ docker-compose.yml → docker compose up → Container Orchestration → Running
 
 ---
 
-## Installation and Setup
-
-### Installation Methods
-
-1. **Standalone Compose Plugin** (Recommended for Docker Desktop)
-   - Included with Docker Desktop
-   - Command: `docker compose` (v2 syntax)
-
-2. **Docker Compose V2 Plugin**
-   ```bash
-   # Install on Linux
-   sudo apt-get update
-   sudo apt-get install docker-compose-plugin
-   ```
-
-3. **Docker Compose V1** (Legacy)
-   ```bash
-   sudo curl -L "https://github.com/docker/compose/releases/download/v1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-   sudo chmod +x /usr/local/bin/docker-compose
-   ```
-
-### Version Check
-
-```bash
-# V2 (Plugin)
-docker compose version
-
-# V1 (Legacy)
-docker-compose --version
-```
-
 ## Docker Compose File Structure
 
 ### Basic Structure
@@ -191,21 +219,81 @@ services:
 
 #### 4. Volumes
 
+Docker Compose simplifies volume management by automatically creating and managing volumes defined in your compose file. Volumes persist data beyond container lifecycles and can be shared between services.
+
+**Volume Types:**
+
+1. **Named Volumes** (Recommended for production data)
+   ```yaml
+   services:
+     db:
+       volumes:
+         - db-data:/var/lib/mysql
+   
+   volumes:
+     db-data:
+       driver: local
+   ```
+   - Created automatically by Docker Compose
+   - Managed by Docker (stored in `/var/lib/docker/volumes/`)
+   - Survive `docker compose down` (unless using `-v` flag)
+   - Can be shared across multiple services
+
+2. **Bind Mounts** (For development and configuration files)
+   ```yaml
+   services:
+     app:
+       volumes:
+         - ./src:/app/src           # Mount local directory
+         - ./config:/app/config      # Mount config files
+         - /app/node_modules         # Anonymous volume (exclude from bind)
+   ```
+   - Direct mapping to host filesystem
+   - Useful for live code reloading in development
+   - Changes reflect immediately on host
+
+3. **Anonymous Volumes** (Temporary data)
+   ```yaml
+   services:
+     app:
+       volumes:
+         - /app/cache
+   ```
+   - Created automatically but not named
+   - Removed when container is removed
+
+**How Docker Compose Manages Volumes:**
+- Automatically creates named volumes on `docker compose up`
+- Prevents data loss when containers are recreated
+- Enables data sharing between services by mounting the same volume
+- Volumes persist even when services are stopped
+- Use `docker compose down -v` to remove volumes
+
+**Volume Sharing Example:**
 ```yaml
 services:
   db:
     volumes:
       - db-data:/var/lib/mysql
-      - ./backup:/backup
-      - ./config:/etc/mysql/conf.d
-
+  
+  backup:
+    volumes:
+      - db-data:/backup-source  # Same volume, different mount point
+  
 volumes:
   db-data:
-    driver: local
 ```
 
 #### 5. Networks
 
+Docker Compose automatically creates networks for your services, enabling seamless communication between containers. Services on the same network can discover each other by service name.
+
+**Default Network Behavior:**
+- Docker Compose creates a default bridge network for all services
+- Services can communicate using their service names as hostnames
+- Each project gets an isolated network (prefixed with project name)
+
+**Custom Networks:**
 ```yaml
 services:
   web:
@@ -215,12 +303,61 @@ services:
     networks:
       - frontend
       - backend
+  db:
+    networks:
+      - backend
 
 networks:
   frontend:
     driver: bridge
   backend:
     driver: bridge
+    internal: true  # No external access
+```
+
+**Network Types:**
+
+1. **Bridge Networks** (Default)
+   - Isolated network for containers on same host
+   - Containers can communicate by name
+   - External access via port mapping
+
+2. **Internal Networks**
+   ```yaml
+   networks:
+     internal:
+       internal: true
+   ```
+   - No external internet access
+   - Perfect for database containers that shouldn't be exposed
+
+3. **External Networks**
+   ```yaml
+   networks:
+     existing:
+       external: true
+       name: my-existing-network
+   ```
+   - Connect to networks created outside Docker Compose
+   - Useful for connecting to containers managed separately
+
+**How Docker Compose Manages Networks:**
+- Creates networks automatically on `docker compose up`
+- Services on same network can reach each other by service name
+- DNS resolution works automatically (e.g., `db` resolves to database container)
+- Networks are isolated per project (directory name)
+- Removed automatically with `docker compose down` (unless external)
+
+**Service Discovery Example:**
+```yaml
+services:
+  web:
+    environment:
+      - DATABASE_URL=postgresql://user:pass@db:5432/mydb
+    # 'db' hostname automatically resolves to db service
+  db:
+    image: postgres:15
+    # No need to expose ports for internal communication
 ```
 
 #### 6. Health Checks
@@ -382,104 +519,6 @@ docker compose down --remove-orphans
 
 # Prune system
 docker system prune
-```
-
----
-
-## Advanced Features
-
-### 1. Multiple Compose Files
-
-```bash
-# Use multiple compose files
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up
-
-# Override with environment-specific files
-docker compose -f docker-compose.yml -f docker-compose.override.yml up
-```
-
-### 2. Profiles
-
-```yaml
-services:
-  web:
-    profiles: ["frontend"]
-  api:
-    profiles: ["backend"]
-  worker:
-    profiles: ["worker"]
-```
-
-```bash
-# Start specific profiles
-docker compose --profile frontend up
-```
-
-### 3. Extends
-
-```yaml
-# docker-compose.base.yml
-services:
-  app:
-    image: node:18
-    working_dir: /app
-
-# docker-compose.yml
-services:
-  web:
-    extends:
-      file: docker-compose.base.yml
-      service: app
-    ports:
-      - "3000:3000"
-```
-
-### 4. Variable Substitution
-
-```yaml
-services:
-  web:
-    image: ${IMAGE_NAME:-nginx}:${IMAGE_TAG:-latest}
-    ports:
-      - "${HOST_PORT:-8080}:80"
-```
-
-### 5. Conditional Configuration
-
-```yaml
-services:
-  web:
-    image: nginx
-    deploy:
-      replicas: ${REPLICAS:-1}
-```
-
-### 6. Secrets Management
-
-```yaml
-services:
-  db:
-    secrets:
-      - db_password
-    environment:
-      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_password
-
-secrets:
-  db_password:
-    file: ./secrets/db_password.txt
-```
-
-### 7. Configs
-
-```yaml
-services:
-  web:
-    configs:
-      - nginx_config
-
-configs:
-  nginx_config:
-    file: ./nginx.conf
 ```
 
 ---
@@ -701,79 +740,6 @@ services:
     build:
       context: .
       target: production
-```
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-#### 1. Port Already in Use
-```bash
-# Check what's using the port
-sudo lsof -i :8080
-
-# Change port in compose file
-ports:
-  - "8081:80"  # Use different host port
-```
-
-#### 2. Service Dependencies
-```yaml
-# Use health checks with depends_on
-depends_on:
-  db:
-    condition: service_healthy
-
-services:
-  db:
-    healthcheck:
-      test: ["CMD", "pg_isready"]
-```
-
-#### 3. Volume Permissions
-```yaml
-# Set user in service
-services:
-  app:
-    user: "1000:1000"
-```
-
-#### 4. Network Issues
-```bash
-# Inspect network
-docker network inspect docker_default
-
-# Check service connectivity
-docker compose exec web ping db
-```
-
-#### 5. Build Context Issues
-```yaml
-# Ensure correct build context
-build:
-  context: ./app  # Relative to compose file location
-  dockerfile: Dockerfile
-```
-
-### Debugging Commands
-
-```bash
-# Validate configuration
-docker compose config
-
-# View service logs
-docker compose logs -f service-name
-
-# Inspect running container
-docker compose exec service-name sh
-
-# Check service status
-docker compose ps
-
-# View resource usage
-docker stats $(docker compose ps -q)
 ```
 
 ---
