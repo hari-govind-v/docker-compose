@@ -1,5 +1,5 @@
 title: Docker Session
 description: A walkthrough of Docker concepts and commands
-remote_theme: songzivong/dark-minima
+theme: jeckyll-theme-charcoal
 markdown: kramdown
 baseurl: /docker-compose
