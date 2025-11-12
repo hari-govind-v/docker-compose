@@ -481,9 +481,6 @@ docker compose config
 # View configuration
 docker compose config --services
 
-# View service ports
-docker compose port web 80
-
 # View service logs
 docker compose top
 ```
@@ -721,8 +718,3 @@ services:
 ## Practice Exercises
 
 1. Create a WordPress site with MySQL database
-2. Set up a Node.js app with Redis cache
-3. Build a microservices architecture with 3 services
-4. Configure a development environment with hot-reload
-5. Implement health checks and dependency management
-
