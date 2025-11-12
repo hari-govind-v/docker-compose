@@ -231,7 +231,6 @@ Docker Compose simplifies volume management by automatically creating and managi
    
    volumes:
      db-data:
-       driver: local
    ```
    - Created automatically by Docker Compose
    - Managed by Docker (stored in `/var/lib/docker/volumes/`)
@@ -330,22 +329,12 @@ networks:
    - No external internet access
    - Perfect for database containers that shouldn't be exposed
 
-3. **External Networks**
-   ```yaml
-   networks:
-     existing:
-       external: true
-       name: my-existing-network
-   ```
-   - Connect to networks created outside Docker Compose
-   - Useful for connecting to containers managed separately
-
 **How Docker Compose Manages Networks:**
 - Creates networks automatically on `docker compose up`
 - Services on same network can reach each other by service name
 - DNS resolution works automatically (e.g., `db` resolves to database container)
 - Networks are isolated per project (directory name)
-- Removed automatically with `docker compose down` (unless external)
+- Removed automatically with `docker compose down`
 
 **Service Discovery Example:**
 ```yaml
@@ -370,21 +359,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-```
-
-#### 7. Resource Limits
-
-```yaml
-services:
-  app:
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
 ```
 
 ---
@@ -676,7 +650,6 @@ DB_PASSWORD=secret123
 # Named volumes for data persistence
 volumes:
   db-data:
-    driver: local
 
 # Bind mounts for development
 volumes:
@@ -705,42 +678,6 @@ services:
       retries: 3
 ```
 
-### 6. Resource Limits
-
-```yaml
-services:
-  app:
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-```
-
-### 7. Security
-
-- Don't commit secrets in compose files
-- Use secrets management
-- Run containers as non-root users
-- Use specific image tags (not `latest`)
-
-### 8. Multi-Stage Compose Files
-
-```yaml
-# docker-compose.dev.yml
-services:
-  app:
-    volumes:
-      - .:/app
-
-# docker-compose.prod.yml
-services:
-  app:
-    build:
-      context: .
-      target: production
-```
-
 ---
 
 ## Summary
@@ -751,14 +688,12 @@ services:
 2. **YAML-based** configuration for declarative service definitions
 3. **Automatic networking** and DNS resolution between services
 4. **Single command** operations for entire application stacks
-5. **Environment-specific** configurations with multiple compose files
-6. **Dependency management** with `depends_on` and health checks
-7. **Volume and network** management built-in
+5. **Dependency management** with `depends_on` and health checks
+6. **Volume and network** management built-in
 
 ### Next Steps
 
 - Practice with real-world examples
-- Explore Docker Compose in production (Docker Swarm)
 - Learn about Docker Compose V2 improvements
 - Study advanced orchestration with Kubernetes
 
