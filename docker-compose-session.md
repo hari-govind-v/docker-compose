@@ -348,7 +348,130 @@ services:
     # No need to expose ports for internal communication
 ```
 
-#### 6. Health Checks
+#### 6. Service Dependencies (depends_on)
+
+The `depends_on` directive in Docker Compose allows you to express dependencies between services, ensuring that services start in the correct order. This is crucial when one service needs another service to be running before it can function properly.
+
+**What `depends_on` Does:**
+- Controls the **startup order** of services
+- Ensures dependent services start **before** the service that depends on them
+- Does **not** wait for services to be "ready" (just started, not necessarily healthy)
+
+**Basic Syntax:**
+```yaml
+services:
+  web:
+    image: nginx:latest
+    depends_on:
+      - api
+      - db
+  
+  api:
+    image: myapi:latest
+    depends_on:
+      - db
+  
+  db:
+    image: postgres:15
+```
+
+In this example:
+- `web` depends on both `api` and `db`, so they start before `web`
+- `api` depends on `db`, so `db` starts before `api`
+- `db` has no dependencies, so it starts first
+- **Startup order**: `db` → `api` → `web`
+
+**Important Limitations:**
+- `depends_on` only controls **startup order**, not **readiness**
+- A service is considered "started" when its container is created, not when it's ready to accept connections
+- For databases and other services that need initialization time, use `depends_on` with `condition: service_healthy` (requires health checks)
+
+**Advanced: Conditional Dependencies**
+
+For more reliable dependency management, you can use conditions with health checks:
+
+```yaml
+services:
+  web:
+    image: nginx:latest
+    depends_on:
+      api:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+  
+  api:
+    image: myapi:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+  
+  db:
+    image: postgres:15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+```
+
+**Available Conditions:**
+- `service_started`: Service container has started (default behavior)
+- `service_healthy`: Service is healthy (requires health check)
+- `service_completed_successfully`: Service has completed successfully (for one-off tasks)
+
+**Real-World Example:**
+```yaml
+services:
+  drupal:
+    image: drupal:latest
+    ports:
+      - "8080:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=drupal
+  
+  postgres:
+    image: postgres:latest
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=drupal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+```
+
+**Best Practices:**
+1. **Use `depends_on` for startup order**: Always specify dependencies to ensure correct startup sequence
+2. **Combine with health checks**: Use `condition: service_healthy` for services that need initialization time (databases, caches, etc.)
+3. **Don't over-depend**: Only specify true dependencies; unnecessary dependencies can slow down startup
+4. **Document dependencies**: Use comments to explain why a dependency exists if it's not obvious
+
+**Common Patterns:**
+- **Web app → API → Database**: Web depends on API, API depends on Database
+- **Worker → Queue → Database**: Worker depends on Queue and Database
+- **Admin tools → Database**: Admin tools depend on Database being ready
+
+**How Docker Compose Manages Dependencies:**
+- Builds a dependency graph from `depends_on` declarations
+- Starts services in topological order (dependencies first)
+- Parallelizes startup when possible (services without dependencies start simultaneously)
+- Respects health check conditions before marking dependencies as satisfied
+
+#### 7. Health Checks
 
 ```yaml
 services:
@@ -360,6 +483,241 @@ services:
       retries: 3
       start_period: 40s
 ```
+
+#### 8. Restart Policies (restart)
+
+The `restart` directive controls the restart behavior of containers when they exit or when Docker daemon restarts. This is essential for ensuring high availability and automatic recovery from failures.
+
+**Available Restart Policies:**
+
+1. **`no`** (Default)
+   - Container will **not** automatically restart
+   - Only starts when explicitly started with `docker compose up` or `docker start`
+   - Best for: One-off tasks, development containers, services that shouldn't auto-restart
+
+2. **`always`**
+   - Container **always** restarts, regardless of exit status
+   - Restarts even if container was manually stopped (unless Docker daemon is stopped)
+   - Restarts automatically when Docker daemon restarts
+   - Best for: Production services that must always be running (web servers, databases, critical services)
+
+3. **`unless-stopped`**
+   - Container restarts automatically unless it was **manually stopped**
+   - If you manually stop a container, it won't restart until you explicitly start it again
+   - Restarts automatically when Docker daemon restarts (even if previously stopped)
+   - Best for: Production services where you want control over stopping (most common production choice)
+
+4. **`on-failure`**
+   - Container restarts only if it exits with a **non-zero exit code** (error)
+   - Does not restart if container exits successfully (exit code 0)
+   - Can specify maximum retry count: `on-failure:5` (restarts up to 5 times)
+   - Best for: Services that should restart on errors but not on successful completion
+
+**Syntax Examples:**
+
+```yaml
+services:
+  # Always restart (even after manual stop)
+  web:
+    image: nginx:latest
+    restart: always
+  
+  # Restart unless manually stopped (recommended for production)
+  api:
+    image: myapi:latest
+    restart: unless-stopped
+  
+  # Restart only on failure
+  worker:
+    image: worker:latest
+    restart: on-failure
+  
+  # Restart on failure, max 3 retries
+  batch-job:
+    image: batch:latest
+    restart: on-failure:3
+  
+  # No automatic restart (default)
+  test:
+    image: test:latest
+    restart: no
+```
+
+**Comparison Table:**
+
+| Policy | Auto-restart on exit? | Restart after manual stop? | Restart on daemon restart? | Use Case |
+|--------|----------------------|---------------------------|---------------------------|----------|
+| `no` | ❌ | ❌ | ❌ | Development, one-off tasks |
+| `always` | ✅ | ✅ | ✅ | Critical services that must always run |
+| `unless-stopped` | ✅ | ❌ | ✅ | Production services (recommended) |
+| `on-failure` | ✅* | ❌ | ✅* | Services that should retry on errors |
+
+*Only if exit code is non-zero
+
+**Real-World Examples:**
+
+```yaml
+services:
+  # Production web server - always running
+  nginx:
+    image: nginx:latest
+    restart: always
+    ports:
+      - "80:80"
+  
+  # Database - restart unless manually stopped
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=secret
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  
+  # Background worker - restart on failure
+  worker:
+    build: ./worker
+    restart: on-failure:5
+    depends_on:
+      - postgres
+  
+  # One-time migration task - no restart
+  migrate:
+    image: myapp:latest
+    restart: no
+    command: python manage.py migrate
+    depends_on:
+      - postgres
+
+volumes:
+  postgres-data:
+```
+
+**Best Practices:**
+
+1. **Use `unless-stopped` for production**: Most flexible option that allows manual control while ensuring automatic restarts
+2. **Use `always` for critical services**: When you absolutely need a service running at all times
+3. **Use `on-failure` for batch jobs**: Services that should retry on errors but complete successfully
+4. **Use `no` for development**: Prevents unwanted restarts during development and debugging
+5. **Combine with health checks**: Restart policies work well with health checks to ensure services are actually healthy, not just running
+
+**Important Notes:**
+
+- Restart policies apply to container exits, not Docker daemon restarts (except `always` and `unless-stopped`)
+- Manual stops (`docker stop` or `docker compose stop`) are respected by `unless-stopped` and `on-failure`
+- Restart policies don't prevent you from manually stopping containers
+- When using `docker compose down`, containers are stopped and removed, so restart policies don't apply until you run `docker compose up` again
+
+#### 9. Command Override (command)
+
+The `command` directive allows you to override the default command (CMD) specified in a Docker image. This is useful for running different commands, passing arguments, or customizing container behavior without modifying the Dockerfile.
+
+**What `command` Does:**
+- Overrides the default `CMD` instruction from the Dockerfile
+- Allows you to run different commands or pass arguments
+- Can be specified as a string or as a list (array)
+- Useful for development, testing, or running one-off tasks
+
+**Basic Syntax:**
+
+```yaml
+services:
+  # String format (shell form)
+  web:
+    image: nginx:latest
+    command: nginx -g "daemon off;"
+  
+  # List format (exec form - recommended)
+  api:
+    image: node:18
+    command: ["node", "server.js"]
+  
+  # With arguments
+  worker:
+    image: python:3.11
+    command: ["python", "worker.py", "--verbose"]
+```
+
+**String vs List Format:**
+
+1. **String Format (Shell Form)**
+   ```yaml
+   command: npm start
+   ```
+   - Executed in a shell (`/bin/sh -c`)
+   - Supports shell features (variables, pipes, redirects)
+   - Less secure (shell injection risks)
+   - Process runs as PID 1 (may not handle signals properly)
+
+2. **List Format (Exec Form) - Recommended**
+   ```yaml
+   command: ["npm", "start"]
+   ```
+   - Executed directly without shell
+   - More secure (no shell interpretation)
+   - Better signal handling
+   - Recommended for production
+
+**Common Use Cases:**
+
+1. **Override Default Command:**
+   ```yaml
+   services:
+     # PostgreSQL with custom startup
+     postgres:
+       image: postgres:15
+       command: postgres -c max_connections=200
+   ```
+
+2. **Run Development Server:**
+   ```yaml
+   services:
+     app:
+       build: .
+       command: npm run dev
+       volumes:
+         - .:/app
+   ```
+
+3. **Run Database Migrations:**
+   ```yaml
+   services:
+     migrate:
+       image: myapp:latest
+       command: python manage.py migrate
+       depends_on:
+         - db
+   ```
+
+4. **Run Tests:**
+   ```yaml
+   services:
+     test:
+       build: .
+       command: ["npm", "test"]
+       volumes:
+         - .:/app
+   ```
+
+5. **Custom Entrypoint with Arguments:**
+   ```yaml
+   services:
+     # If image has ENTRYPOINT, command provides arguments
+     app:
+       image: myapp:latest
+       # If ENTRYPOINT is ["docker-entrypoint.sh"], this becomes:
+       # docker-entrypoint.sh python app.py --debug
+       command: ["python", "app.py", "--debug"]
+   ```
+
+
+**Important Notes:**
+
+- `command` completely replaces the Dockerfile's `CMD`
+- If the image has an `ENTRYPOINT`, `command` provides arguments to it
+- To override both `ENTRYPOINT` and `CMD`, use both `entrypoint` and `command` directives
+- Commands run as the user specified in the Dockerfile (or root if not specified)
+- Use `entrypoint` directive to override the ENTRYPOINT if needed
 
 ---
 
